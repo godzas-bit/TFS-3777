@@ -352,36 +352,76 @@ bool Weapon::useFist(Player* player, Creature* target)
 	maxDamage = std::floor(maxDamage);
 	int32_t damage = -random_range(0, (int32_t)maxDamage, DISTRO_NORMAL);
 
-	CombatParams fist;
-	fist.blockedByArmor = true;
-	fist.blockedByShield = true;
-	fist.combatType = COMBAT_PHYSICALDAMAGE;
+        CombatParams fist;
+        fist.blockedByArmor = true;
+        fist.blockedByShield = true;
+        fist.combatType = COMBAT_PHYSICALDAMAGE;
 
-	Combat::doCombatHealth(player, target, damage, damage, fist);
-	if(!player->hasFlag(PlayerFlag_NotGainSkill) && player->getAddAttackSkill())
-		player->addSkillAdvance(SKILL_FIST, 1);
+        if(g_game.isArpgModeEnabled())
+        {
+                std::function<void(Creature*, Creature*)> postHit;
+                if(!player->hasFlag(PlayerFlag_NotGainSkill) && player->getAddAttackSkill())
+                {
+                        Player* skillOwner = player;
+                        postHit = [skillOwner](Creature*, Creature*)
+                        {
+                                skillOwner->addSkillAdvance(SKILL_FIST, 1);
+                        };
+                }
 
-	return true;
+                if(g_game.queueWeaponMeleeEffect(player, target, damage, fist, postHit))
+                        return true;
+        }
+
+        Combat::doCombatHealth(player, target, damage, damage, fist);
+        if(!player->hasFlag(PlayerFlag_NotGainSkill) && player->getAddAttackSkill())
+                player->addSkillAdvance(SKILL_FIST, 1);
+
+        return true;
 }
 
 bool Weapon::internalUseWeapon(Player* player, Item* item, Creature* target, int32_t damageModifier) const
 {
-	if(isScripted())
-	{
-		LuaVariant var;
-		var.type = VARIANT_NUMBER;
-		var.number = target->getID();
-		executeUseWeapon(player, var);
-	}
-	else
-	{
-		int32_t damage = (getWeaponDamage(player, target, item) * damageModifier) / 100;
-		Combat::doCombatHealth(player, target, damage, damage, params);
-	}
+        if(isScripted())
+        {
+                LuaVariant var;
+                var.type = VARIANT_NUMBER;
+                var.number = target->getID();
+                executeUseWeapon(player, var);
+        }
+        else
+        {
+                int32_t damage = (getWeaponDamage(player, target, item) * damageModifier) / 100;
+                if(g_game.isArpgModeEnabled())
+                {
+                        bool queued = false;
+                        switch(item->getWeaponType())
+                        {
+                                case WEAPON_AMMO:
+                                case WEAPON_DISTANCE:
+                                case WEAPON_WAND:
+                                        queued = g_game.queueWeaponProjectileEffect(player, target, damage, params);
+                                        break;
 
-	onUsedAmmo(player, item, target->getTile());
-	onUsedWeapon(player, item, target->getTile());
-	return true;
+                                default:
+                                        queued = g_game.queueWeaponMeleeEffect(player, target, damage, params);
+                                        break;
+                        }
+
+                        if(queued)
+                        {
+                                onUsedAmmo(player, item, target->getTile());
+                                onUsedWeapon(player, item, target->getTile());
+                                return true;
+                        }
+                }
+
+                Combat::doCombatHealth(player, target, damage, damage, params);
+        }
+
+        onUsedAmmo(player, item, target->getTile());
+        onUsedWeapon(player, item, target->getTile());
+        return true;
 }
 
 bool Weapon::internalUseWeapon(Player* player, Item* item, Tile* tile) const
@@ -541,16 +581,19 @@ bool WeaponMelee::useWeapon(Player* player, Item* item, Creature* target) const
 	if(!Weapon::useWeapon(player, item, target))
 		return false;
 
-	if(elementDamage && elementType != COMBAT_NONE)
-	{
-		CombatParams element;
-		element.combatType = elementType;
+        if(elementDamage && elementType != COMBAT_NONE)
+        {
+                CombatParams element;
+                element.combatType = elementType;
 
-		int32_t damage = getElementDamage(player, item);
-		Combat::doCombatHealth(player, target, damage, damage, element);
-	}
+                int32_t damage = getElementDamage(player, item);
+                if(g_game.isArpgModeEnabled())
+                        g_game.queueWeaponMeleeEffect(player, target, damage, element);
+                else
+                        Combat::doCombatHealth(player, target, damage, damage, element);
+        }
 
-	return true;
+        return true;
 }
 
 bool WeaponMelee::getSkillType(const Player* player, const Item* item,

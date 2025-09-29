@@ -80,8 +80,9 @@
 	gainExperienceColor = 215
 	addManaSpentInPvPZone = true
 	squareColor = 0
-	allowFightback = true
-	fistBaseAttack = 7
+        allowFightback = true
+        arpgMode = false
+        fistBaseAttack = 7
 	optionalWarAttackableAlly = false
 
 	-- Connection config

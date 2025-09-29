@@ -26,10 +26,18 @@
 #include "map.h"
 #include "spawn.h"
 
+#include "combat.h"
+#include "spatial.h"
+
 #include "item.h"
 #include "player.h"
 #include "npc.h"
 #include "monster.h"
+
+#include <functional>
+#include <set>
+#include <unordered_map>
+#include <vector>
 
 class ServiceManager;
 class Creature;
@@ -37,6 +45,37 @@ class Player;
 class Monster;
 class Npc;
 class CombatInfo;
+
+typedef uint32_t CreatureId;
+
+struct Effect
+{
+        enum Kind
+        {
+                Projectile,
+                MeleeArc,
+                AoE
+        };
+
+        Kind kind;
+        CreatureId source;
+        uint32_t startTick;
+        uint32_t endTick;
+        AABB hitbox;
+        Vec2f pos;
+        Vec2f vel;
+        uint16_t spellId;
+
+        CombatParams params;
+        int32_t minChange;
+        int32_t maxChange;
+        bool resolved;
+        std::set<uint32_t> impactedCreatures;
+        std::function<void(Creature*, Creature*)> onHit;
+
+        Effect(): kind(Projectile), source(0), startTick(0), endTick(0), hitbox(), pos(), vel(), spellId(0),
+                params(), minChange(0), maxChange(0), resolved(false), impactedCreatures(), onHit() {}
+};
 
 enum stackposType_t
 {
@@ -158,7 +197,23 @@ class Game
 		bool isSwimmingPool(Item* item, const Tile* tile, bool checkProtection) const;
 
 		void prepareGlobalSave();
-		void globalSave();
+                void globalSave();
+
+                /**
+                  * Accessor for the ARPG combat toggle. The flag is stored in the
+                  * configuration manager so the helper keeps the game interface small.
+                  */
+                bool isArpgModeEnabled() const;
+
+                bool queueSpellProjectileEffect(const Combat& combat, Creature* caster, Creature* target,
+                        const Position& targetPos, uint16_t spellId);
+                bool queueSpellAoEEffect(const Combat& combat, Creature* caster, const Position& targetPos,
+                        uint16_t spellId);
+                bool queueWeaponProjectileEffect(Creature* caster, Creature* target, int32_t minChange,
+                        const CombatParams& params, const std::function<void(Creature*, Creature*)>& postHit = std::function<void(Creature*, Creature*)>());
+                bool queueWeaponMeleeEffect(Creature* caster, Creature* target, int32_t minChange,
+                        const CombatParams& params, const std::function<void(Creature*, Creature*)>& postHit = std::function<void(Creature*, Creature*)>());
+                void spawnEffect(Effect effect);
 
 		/**
 		  * Load a map.
@@ -527,10 +582,13 @@ class Game
 		void loadPlayersRecord();
 		void checkPlayersRecord(Player* player);
 
-		bool reloadInfo(ReloadInfo_t reload, uint32_t playerId = 0);
-		void cleanup();
-		void shutdown();
-		void freeThing(Thing* thing);
+                bool reloadInfo(ReloadInfo_t reload, uint32_t playerId = 0);
+                void cleanup();
+                void updateEffects();
+                Vec2f toContinuousPosition(const Position& pos) const;
+                Vec2f directionToVector(Direction dir) const;
+                void shutdown();
+                void freeThing(Thing* thing);
 
 		bool canThrowObjectTo(const Position& fromPos, const Position& toPos, bool checkLineOfSight = true,
 			int32_t rangex = Map::maxClientViewportX, int32_t rangey = Map::maxClientViewportY);
@@ -674,8 +732,11 @@ class Game
 		uint32_t checkLightEvent, checkCreatureEvent, checkDecayEvent, saveEvent;
 		bool globalSaveMessage[3];
 
-		RefreshTiles refreshTiles;
-		Trash trash;
+                RefreshTiles refreshTiles;
+                Trash trash;
+
+                std::vector<Effect> activeEffects;
+                uint32_t effectTickCounter;
 
 		StageList stages;
 		uint32_t lastStageLevel;
