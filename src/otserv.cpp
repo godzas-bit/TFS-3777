@@ -20,6 +20,7 @@
 #include <iostream>
 #include <fstream>
 #include <iomanip>
+#include <cassert>
 
 #ifndef WINDOWS
 #include <sys/signal.h>
@@ -422,6 +423,10 @@ void otserv(StringVec, ServiceManager* services)
 	std::clog << ">> Loading config (" << g_config.getString(ConfigManager::CONFIG_FILE) << ")" << std::endl;
 	if(!g_config.load())
 		startupErrorMessage("Unable to load " + g_config.getString(ConfigManager::CONFIG_FILE) + "!");
+
+	const bool arpgModeEnabled = g_config.getBoolean(ConfigManager::ARPG_MODE);
+	assert(ConfigManager::ARPG_MODE < ConfigManager::LAST_BOOL_CONFIG);
+	std::clog << ">> ARPG mode: " << (arpgModeEnabled ? "ON" : "OFF") << std::endl;
 
 	// silently append trailing slash
 	std::string path = g_config.getString(ConfigManager::DATA_DIRECTORY);

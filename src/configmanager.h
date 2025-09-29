@@ -283,6 +283,7 @@ class ConfigManager
 			ADMIN_REQUIRE_LOGIN,
 			ADDONS_PREMIUM,
 			OPTIONAL_WAR_ATTACK_ALLY,
+			ARPG_MODE,
 			ENABLE_CAST,
 			SKIP_ITEMS_VERSION,
 			BIND_ONLY_GLOBAL_ADDRESS,
@@ -298,6 +299,7 @@ class ConfigManager
 
 		const std::string& getString(uint32_t _what) const;
 		bool getBool(uint32_t _what) const;
+		bool getBoolean(uint32_t _what) const;
 		int32_t getNumber(uint32_t _what) const;
 		double getDouble(uint32_t _what) const;
 
