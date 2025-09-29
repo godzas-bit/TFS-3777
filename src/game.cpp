@@ -1475,6 +1475,21 @@ ReturnValue Game::internalMoveItem(Creature* actor, Cylinder* fromCylinder, Cyli
 		return internalAddItem(actor, toCylinder, item, INDEX_WHEREEVER, FLAG_NOLIMIT);
 	}
 
+	if(actor && g_config.getBool(ConfigManager::CHECK_CORPSE_OWNER))
+	{
+		Player* movingPlayer = actor->getPlayer();
+		if(movingPlayer)
+		{
+			Tile* fromTile = fromCylinder ? fromCylinder->getTile() : NULL;
+			if(fromTile)
+			{
+				uint32_t ownerId = item->getCorpseOwner();
+				if(ownerId && !movingPlayer->canOpenCorpse(ownerId))
+					return RET_YOUARENOTTHEOWNER;
+			}
+		}
+	}
+
 	Item* toItem = NULL;
 	Cylinder* subCylinder = NULL;
 

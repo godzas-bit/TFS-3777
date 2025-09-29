@@ -116,6 +116,7 @@ bool ConfigManager::load()
 		#endif
 		m_confString[ENCRYPTION_TYPE] = getGlobalString("encryptionType", "sha1");
 		m_confBool[BIND_ONLY_GLOBAL_ADDRESS] = getGlobalBool("bindOnlyGlobalAddress", true);
+		m_confBool[ARPG_MODE] = getGlobalBool("arpgMode", false);
 	}
 
 	m_confString[MAP_AUTHOR] = getGlobalString("mapAuthor", "Unknown");

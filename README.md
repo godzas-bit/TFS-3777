@@ -51,3 +51,7 @@ cmake ..
 ```
 make -j$(grep processor /proc/cpuinfo | wc -l)
 ```
+
+## ARPG mode
+
+Enabling `arpgMode` in `config.lua` causes monsters to drop loot directly on the ground. Corpses are still spawned as decoration only. 

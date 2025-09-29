@@ -15,6 +15,8 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ////////////////////////////////////////////////////////////////////////
 #include "otpch.h"
+#include <sstream>
+#include <vector>
 
 #include "monster.h"
 #include "spawn.h"
@@ -1338,9 +1340,81 @@ void Monster::updateLookDirection()
 
 void Monster::dropLoot(Container* corpse)
 {
-	if(corpse && lootDrop == LOOT_DROP_FULL)
+	if(lootDrop != LOOT_DROP_FULL)
+		return;
+
+	if(g_config.getBool(ConfigManager::ARPG_MODE))
+	{
+		Tile* tile = getTile();
+		if(!tile)
+			return;
+
+		std::vector<Item*> lootItems;
+		mType->collectLootItems(lootItems);
+
+		uint32_t ownerId = corpse ? corpse->getCorpseOwner() : 0;
+		for(std::vector<Item*>::iterator it = lootItems.begin(); it != lootItems.end();)
+		{
+			Item* item = *it;
+			if(ownerId)
+				item->setCorpseOwner(ownerId);
+
+			ReturnValue ret = g_game.internalAddItem(NULL, tile, item, INDEX_WHEREEVER, FLAG_NOLIMIT);
+			if(ret != RET_NOERROR)
+			{
+				std::clog << "[Warning - Monster::dropLoot] Failed to drop item " << item->getID() << " on tile." << std::endl;
+				item->unRef();
+				it = lootItems.erase(it);
+				continue;
+			}
+
+			g_game.startDecay(item);
+			++it;
+		}
+
+		if(ownerId)
+		{
+			Player* owner = g_game.getPlayerByGuid(ownerId);
+			if(owner)
+			{
+				LootMessage_t message = mType->lootMessage;
+				if(message == LOOTMSG_IGNORE)
+					message = (LootMessage_t)g_config.getNumber(ConfigManager::LOOT_MESSAGE);
+
+				if(message >= LOOTMSG_PLAYER)
+				{
+					std::stringstream ss;
+					ss << "Loot of " << mType->nameDescription << ": ";
+					bool first = true;
+					for(std::vector<Item*>::const_iterator mit = lootItems.begin(); mit != lootItems.end(); ++mit)
+					{
+						if(!first)
+							ss << ", ";
+						else
+							first = false;
+
+						ss << (*mit)->getNameDescription();
+					}
+
+					if(first)
+						ss << "nothing";
+
+					ss << ".";
+					if(owner->getParty() && message > LOOTMSG_PLAYER)
+						owner->getParty()->broadcastMessage((MessageClasses)g_config.getNumber(ConfigManager::LOOT_MESSAGE_TYPE), ss.str());
+					else if(message == LOOTMSG_PLAYER || message == LOOTMSG_BOTH)
+						owner->sendTextMessage((MessageClasses)g_config.getNumber(ConfigManager::LOOT_MESSAGE_TYPE), ss.str());
+				}
+			}
+		}
+
+		return;
+	}
+
+	if(corpse)
 		mType->dropLoot(corpse);
 }
+
 
 bool Monster::isImmune(CombatType_t type) const
 {

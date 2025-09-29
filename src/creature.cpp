@@ -797,6 +797,13 @@ void Creature::dropCorpse(DeathList deathList)
 		g_game.startDecay(splash);
 	}
 
+	if(g_config.getBool(ConfigManager::ARPG_MODE))
+	{
+		dropLoot(corpse->getContainer());
+		corpse->unRef();
+		return;
+	}
+
 	g_game.internalAddItem(NULL, tile, corpse, INDEX_WHEREEVER, FLAG_NOLIMIT);
 	dropLoot(corpse->getContainer());
 	g_game.startDecay(corpse);

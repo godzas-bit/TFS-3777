@@ -285,9 +285,10 @@ class ConfigManager
 			OPTIONAL_WAR_ATTACK_ALLY,
 			ENABLE_CAST,
 			SKIP_ITEMS_VERSION,
+			ARPG_MODE,
 			BIND_ONLY_GLOBAL_ADDRESS,
 			LAST_BOOL_CONFIG /* this must be the last one */
-		};
+};
 
 		bool load();
 		bool reload();
