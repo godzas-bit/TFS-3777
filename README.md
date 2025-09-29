@@ -51,3 +51,7 @@ cmake ..
 ```
 make -j$(grep processor /proc/cpuinfo | wc -l)
 ```
+
+## Configuration
+
+- `arpgMode` (default: `false`) — toggles ARPG-oriented server behavior without requiring compile-time switches.

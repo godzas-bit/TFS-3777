@@ -34,6 +34,7 @@ ConfigManager::ConfigManager()
 	m_confString[DATA_DIRECTORY] = m_confString[LOGS_DIRECTORY] = m_confString[IP] = m_confString[RUNFILE] = m_confString[OUTPUT_LOG] = m_confString[ENCRYPTION_KEY] = "";
 	m_confBool[LOGIN_ONLY_LOGINSERVER] = m_confBool[START_CLOSED] = false;
 	m_confBool[SCRIPT_SYSTEM] = true;
+	m_confBool[ARPG_MODE] = false;
 }
 
 bool ConfigManager::load()
@@ -288,6 +289,7 @@ bool ConfigManager::load()
 	m_confNumber[LOOT_MESSAGE_TYPE] = getGlobalNumber("monsterLootMessageType", 25);
 	m_confNumber[NAME_REPORT_TYPE] = getGlobalNumber("violationNameReportActionType", 2);
 	m_confBool[ALLOW_FIGHTBACK] = getGlobalBool("allowFightback", true);
+	m_confBool[ARPG_MODE] = getGlobalBool("arpgMode", false);
 	m_confNumber[HOUSE_CLEAN_OLD] = getGlobalNumber("houseCleanOld", 0);
 	m_confBool[VIPLIST_PER_PLAYER] = getGlobalBool("separateVipListPerCharacter", false);
 	m_confDouble[RATE_MONSTER_HEALTH] = getGlobalDouble("rateMonsterHealth", 1);
@@ -376,6 +378,11 @@ bool ConfigManager::getBool(uint32_t _what) const
 		std::clog << "[Warning - ConfigManager::getBool] " << _what << std::endl;
 
 	return false;
+}
+
+bool ConfigManager::getBoolean(uint32_t _what) const
+{
+	return getBool(_what);
 }
 
 int32_t ConfigManager::getNumber(uint32_t _what) const
