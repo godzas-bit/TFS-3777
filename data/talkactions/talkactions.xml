@@ -30,6 +30,7 @@
 
 	<!-- Gamemasters -->
 	<talkaction log="yes" words="/ghost" access="3" event="function" value="ghost"/>
+	<talkaction log="yes" words="/arpgdebug" access="3" event="function" value="arpgDebug"/>
 	<talkaction log="yes" words="/squelch" access="3" event="script" value="gamemaster.lua"/>
 	<talkaction log="yes" words="/cliport" access="3" event="script" value="gamemaster.lua"/>
 	<talkaction log="yes" words="/t" access="3" event="script" value="teleporttown.lua"/>

@@ -69,6 +69,13 @@ enum GameState_t
 	GAMESTATE_LAST = GAMESTATE_SHUTDOWN
 };
 
+enum DebugOverlay_t
+{
+	DEBUG_OVERLAY_HITBOXES,
+	DEBUG_OVERLAY_EFFECT_COUNT,
+	DEBUG_OVERLAY_VELOCITY_ARROWS
+};
+
 enum LightState_t
 {
 	LIGHT_STATE_DAY,
@@ -180,6 +187,14 @@ class Game
 
 		void setWorldType(WorldType_t type) {worldType = type;}
 		WorldType_t getWorldType() const {return worldType;}
+		bool setDebugOverlayEnabled(DebugOverlay_t overlay, bool enabled);
+		bool toggleDebugOverlay(DebugOverlay_t overlay);
+		bool isDebugOverlayEnabled(DebugOverlay_t overlay) const;
+
+		bool setArpgModeEnabled(bool enabled);
+		bool toggleArpgMode();
+		bool isArpgModeEnabled() const {return arpgModeEnabled;}
+
 
 		Cylinder* internalGetCylinder(Player* player, const Position& pos);
 		Thing* internalGetThing(Player* player, const Position& pos, int32_t index,
@@ -664,6 +679,11 @@ class Game
 
 		GameState_t gameState;
 		WorldType_t worldType;
+
+		bool debugOverlayHitboxes;
+		bool debugOverlayEffectCount;
+		bool debugOverlayVelocityArrows;
+		bool arpgModeEnabled;
 
 		ServiceManager* services;
 		Map* map;
