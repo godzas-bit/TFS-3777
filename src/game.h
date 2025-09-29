@@ -23,6 +23,8 @@
 #include "templates.h"
 #include "scheduler.h"
 
+#include <set>
+
 #include "map.h"
 #include "spawn.h"
 
@@ -137,6 +139,7 @@ typedef std::map<int32_t, float> StageList;
 #define EVENT_DECAYINTERVAL 1000
 #define EVENT_DECAYBUCKETS 16
 #define STATE_DELAY 1000
+#define EVENT_ARPG_TICK_INTERVAL 50
 
 /**
   * Main Game class.
@@ -580,6 +583,9 @@ class Game
 		void updateCreatureWalk(uint32_t creatureId);
 		void checkCreatureAttack(uint32_t creatureId);
 		void checkCreatures();
+		void runArpgTick();
+		void trackArpgMovingCreature(Creature* creature);
+		void untrackArpgMovingCreature(Creature* creature);
 		void checkLight();
 
 		bool combatBlockHit(CombatType_t combatType, Creature* attacker, Creature* target,
@@ -672,7 +678,11 @@ class Game
 		int32_t lastMotdId;
 		uint32_t playersRecord;
 		uint32_t checkLightEvent, checkCreatureEvent, checkDecayEvent, saveEvent;
+		uint32_t arpgUpdateEvent;
+		uint64_t lastArpgUpdate;
 		bool globalSaveMessage[3];
+
+		std::set<Creature*> arpgMovingCreatures;
 
 		RefreshTiles refreshTiles;
 		Trash trash;

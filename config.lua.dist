@@ -84,6 +84,9 @@
 	fistBaseAttack = 7
 	optionalWarAttackableAlly = false
 
+	-- Movement
+	arpgMode = false
+
 	-- Connection config
 	worldId = 0
 	ip = "127.0.0.1"

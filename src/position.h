@@ -23,6 +23,27 @@
 #include <iostream>
 #include <vector>
 
+struct Vec2f
+{
+        Vec2f(): x(0.f), y(0.f) {}
+        Vec2f(float _x, float _y): x(_x), y(_y) {}
+
+        Vec2f operator+(const Vec2f& other) const {return Vec2f(x + other.x, y + other.y);}
+        Vec2f operator-(const Vec2f& other) const {return Vec2f(x - other.x, y - other.y);}
+        Vec2f operator*(float scalar) const {return Vec2f(x * scalar, y * scalar);}
+        Vec2f& operator+=(const Vec2f& other)
+        {
+                x += other.x;
+                y += other.y;
+                return *this;
+        }
+
+        bool isZero() const {return std::abs(x) < 1e-4f && std::abs(y) < 1e-4f;}
+
+        float x;
+        float y;
+};
+
 enum Direction
 {
 	NORTH = 0,
