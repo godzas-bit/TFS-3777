@@ -101,38 +101,60 @@ void MonsterType::dropLoot(Container* corpse)
 			if(Container* container = tmpItem->getContainer())
 			{
 				if(createChildLoot(container, (*it)))
-					corpse->__internalAddThing(tmpItem);
+				corpse->__internalAddThing(tmpItem);
 				else
-					delete container;
+				delete container;
 			}
 			else
-				corpse->__internalAddThing(tmpItem);
+			corpse->__internalAddThing(tmpItem);
 		}
 	}
 
 	corpse->__startDecaying();
 	uint32_t ownerId = corpse->getCorpseOwner();
 	if(!ownerId)
-		return;
+	return;
 
 	Player* owner = g_game.getPlayerByGuid(ownerId);
 	if(!owner)
-		return;
+	return;
 
 	LootMessage_t message = lootMessage;
 	if(message == LOOTMSG_IGNORE)
-		message = (LootMessage_t)g_config.getNumber(ConfigManager::LOOT_MESSAGE);
+	message = (LootMessage_t)g_config.getNumber(ConfigManager::LOOT_MESSAGE);
 
 	if(message < LOOTMSG_PLAYER)
-		return;
+	return;
 
 	std::stringstream ss;
 	ss << "Loot of " << nameDescription << ": " << corpse->getContentDescription() << ".";
 	if(owner->getParty() && message > LOOTMSG_PLAYER)
-		owner->getParty()->broadcastMessage((MessageClasses)g_config.getNumber(ConfigManager::LOOT_MESSAGE_TYPE), ss.str());
+	owner->getParty()->broadcastMessage((MessageClasses)g_config.getNumber(ConfigManager::LOOT_MESSAGE_TYPE), ss.str());
 	else if(message == LOOTMSG_PLAYER || message == LOOTMSG_BOTH)
-		owner->sendTextMessage((MessageClasses)g_config.getNumber(ConfigManager::LOOT_MESSAGE_TYPE), ss.str());
+	owner->sendTextMessage((MessageClasses)g_config.getNumber(ConfigManager::LOOT_MESSAGE_TYPE), ss.str());
 }
+
+
+void MonsterType::collectLootItems(std::vector<Item*>& items)
+{
+	Item* tmpItem = NULL;
+	for(LootItems::const_iterator it = lootItems.begin(); it != lootItems.end(); ++it)
+	{
+		if((tmpItem = createLoot(*it)))
+		{
+			if(Container* container = tmpItem->getContainer())
+			{
+				if(createChildLoot(container, (*it)))
+				items.push_back(tmpItem);
+				else
+				delete container;
+			}
+			else
+			items.push_back(tmpItem);
+		}
+	}
+}
+
 
 Item* MonsterType::createLoot(const LootBlock& lootBlock)
 {

@@ -110,6 +110,7 @@
 	loginOnlyWithLoginServer = false
 	premiumPlayerSkipWaitList = false
 	enableCast = true
+	arpgMode = false
 
 	-- Database
 	-- NOTE: sqlFile is used only by sqlite database, and sqlKeepAlive by mysql database.

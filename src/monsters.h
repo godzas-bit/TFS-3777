@@ -87,6 +87,7 @@ class MonsterType
 		void reset();
 
 		void dropLoot(Container* corpse);
+		void collectLootItems(std::vector<Item*>& items);
 		Item* createLoot(const LootBlock& lootBlock);
 		bool createChildLoot(Container* parent, const LootBlock& lootBlock);
 
