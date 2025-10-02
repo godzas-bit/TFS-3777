@@ -315,6 +315,7 @@ bool ConfigManager::load()
 	m_confNumber[FIST_BASE_ATTACK] = getGlobalNumber("fistBaseAttack", 7);
 	m_confBool[ENABLE_CAST]	= getGlobalBool("enableCast", true);
 	m_confBool[SKIP_ITEMS_VERSION] = getGlobalBool("skipItemsVersionCheck", true);
+	m_confBool[ARPG_MODE] = getGlobalBool("arpgMode", false);
 	m_confNumber[EXHAUST_ONBUY] = getGlobalNumber("onBuy", 500);
 	m_confNumber[EXHAUST_ONSELL] = getGlobalNumber("onSell", 500);
 	m_confNumber[EXHAUST_CHANGEOUFIT] = getGlobalNumber("changeOutfit", 500);

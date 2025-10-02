@@ -30,6 +30,7 @@
 #include "creatureevent.h"
 #include "spatial.h"
 
+#include <deque>
 enum slots_t
 {
 	SLOT_PRE_FIRST = 0,
@@ -463,9 +464,18 @@ class Creature : public AutoId, virtual public Thing
 		{
 			_tile = dynamic_cast<Tile*>(cylinder);
 			Thing::setParent(cylinder);
+			if(_tile && velocity.isZero() && arpgWaypoints.empty())
+				posf = Vec2f(_tile->getPosition().x, _tile->getPosition().y);
 		}
 
 		virtual Position getPosition() const {return _tile->getPosition();}
+		const Vec2f& getContinuousPosition() const {return posf;}
+		void setContinuousPosition(const Vec2f& value) {posf = value;}
+		const Vec2f& getVelocity() const {return velocity;}
+		void setVelocity(const Vec2f& value);
+		void clearArpgMotion();
+		bool hasArpgMotion() const;
+		void updateArpgMotion(double dtSeconds);
 		virtual Tile* getTile() {return _tile;}
 		virtual const Tile* getTile() const {return _tile;}
 		int32_t getWalkCache(const Position& pos) const;
@@ -501,6 +511,9 @@ class Creature : public AutoId, virtual public Thing
 
 		Position masterPosition;
 		Position lastPosition;
+		Vec2f posf; // Continuous tile-space position used for ARPG mode interpolation.
+		Vec2f velocity; // Continuous velocity (tiles per second) for ARPG movement.
+		std::deque<Vec2f> arpgWaypoints;
 		int32_t masterRadius;
 		uint64_t lastStep;
 		uint32_t lastStepCost;

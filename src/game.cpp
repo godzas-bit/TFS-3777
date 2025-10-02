@@ -15,6 +15,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ////////////////////////////////////////////////////////////////////////
 #include "otpch.h"
+#include <vector>
 #include "game.h"
 
 #include <algorithm>
@@ -97,12 +98,21 @@ Game::Game()
 	lightState = LIGHT_STATE_DAY;
 
 	lastBucket = checkCreatureLastIndex = checkLightEvent = checkCreatureEvent = checkDecayEvent = saveEvent = 0;
+	arpgUpdateEvent = 0;
+	lastArpgUpdate = 0;
 }
 
 Game::~Game()
 {
+	if(arpgUpdateEvent)
+	        Scheduler::getInstance().stopEvent(arpgUpdateEvent);
+
+	for(std::set<Creature*>::iterator it = arpgMovingCreatures.begin(); it != arpgMovingCreatures.end(); ++it)
+	        (*it)->unRef();
+
+	arpgMovingCreatures.clear();
 	if(map)
-		delete map;
+	        delete map;
 }
 
 bool Game::isDebugOverlayEnabled(DebugOverlay_t overlay) const
@@ -188,7 +198,14 @@ void Game::start(ServiceManager* servicer)
 	checkCreatureEvent = Scheduler::getInstance().addEvent(createSchedulerTask(EVENT_CREATURE_THINK_INTERVAL,
 		boost::bind(&Game::checkCreatures, this)));
 	checkLightEvent = Scheduler::getInstance().addEvent(createSchedulerTask(EVENT_LIGHTINTERVAL,
-		boost::bind(&Game::checkLight, this)));
+	        boost::bind(&Game::checkLight, this)));
+
+	if(g_config.getBool(ConfigManager::ARPG_MODE))
+	{
+	        lastArpgUpdate = OTSYS_TIME();
+	        arpgUpdateEvent = Scheduler::getInstance().addEvent(createSchedulerTask(EVENT_ARPG_TICK_INTERVAL,
+	                boost::bind(&Game::runArpgTick, this)));
+	}
 
 	services = servicer;
 	if(!g_config.getBool(ConfigManager::GLOBALSAVE_ENABLED) || g_config.getNumber(ConfigManager::GLOBALSAVE_H) < 1 ||
@@ -4659,7 +4676,7 @@ void Game::removeCreatureCheck(Creature* creature)
 void Game::checkCreatures()
 {
 	Scheduler::getInstance().addEvent(createSchedulerTask(
-		EVENT_CHECK_CREATURE_INTERVAL, boost::bind(&Game::checkCreatures, this)));
+	        EVENT_CHECK_CREATURE_INTERVAL, boost::bind(&Game::checkCreatures, this)));
 	checkCreatureLastIndex++;
 	if(checkCreatureLastIndex == EVENT_CREATURECOUNT)
 		checkCreatureLastIndex = 0;
@@ -4688,6 +4705,83 @@ void Game::checkCreatures()
 	}
 
 	cleanup();
+}
+
+void Game::runArpgTick()
+{
+	if(!g_config.getBool(ConfigManager::ARPG_MODE))
+	{
+	        for(std::set<Creature*>::iterator it = arpgMovingCreatures.begin(); it != arpgMovingCreatures.end(); ++it)
+	                (*it)->unRef();
+
+	        arpgMovingCreatures.clear();
+	        arpgUpdateEvent = 0;
+	        return;
+	}
+
+	arpgUpdateEvent = Scheduler::getInstance().addEvent(createSchedulerTask(EVENT_ARPG_TICK_INTERVAL,
+	        boost::bind(&Game::runArpgTick, this)));
+
+	uint64_t now = OTSYS_TIME();
+	double dtSeconds = 0.0;
+	if(lastArpgUpdate)
+	        dtSeconds = static_cast<double>(now - lastArpgUpdate) / 1000.0;
+	else
+	        dtSeconds = static_cast<double>(EVENT_ARPG_TICK_INTERVAL) / 1000.0;
+
+	lastArpgUpdate = now;
+
+	if(arpgMovingCreatures.empty())
+	        return;
+
+	std::vector<Creature*> movers(arpgMovingCreatures.begin(), arpgMovingCreatures.end());
+	for(std::vector<Creature*>::iterator it = movers.begin(); it != movers.end(); ++it)
+	{
+	        Creature* creature = *it;
+	        if(!creature)
+	                continue;
+
+	        if(creature->isRemoved())
+	        {
+	                untrackArpgMovingCreature(creature);
+	                continue;
+	        }
+
+	        creature->updateArpgMotion(dtSeconds);
+	        if(!creature->hasArpgMotion())
+	                untrackArpgMovingCreature(creature);
+	}
+
+	cleanup();
+}
+
+void Game::trackArpgMovingCreature(Creature* creature)
+{
+	if(!creature || creature->isRemoved() || !g_config.getBool(ConfigManager::ARPG_MODE))
+	        return;
+
+	if(arpgMovingCreatures.insert(creature).second)
+	        creature->addRef();
+
+	if(!arpgUpdateEvent)
+	{
+	        lastArpgUpdate = OTSYS_TIME();
+	        arpgUpdateEvent = Scheduler::getInstance().addEvent(createSchedulerTask(EVENT_ARPG_TICK_INTERVAL,
+	                boost::bind(&Game::runArpgTick, this)));
+	}
+}
+
+void Game::untrackArpgMovingCreature(Creature* creature)
+{
+	if(!creature)
+	        return;
+
+	std::set<Creature*>::iterator it = arpgMovingCreatures.find(creature);
+	if(it == arpgMovingCreatures.end())
+	        return;
+
+	arpgMovingCreatures.erase(it);
+	creature->unRef();
 }
 
 void Game::changeSpeed(Creature* creature, int32_t varSpeedDelta)

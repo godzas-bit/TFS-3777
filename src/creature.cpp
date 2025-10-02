@@ -15,6 +15,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ////////////////////////////////////////////////////////////////////////
 #include "otpch.h"
+#include <cmath>
 
 #include "creature.h"
 #include "player.h"
@@ -22,6 +23,7 @@
 #include "monster.h"
 #include "spatial.h"
 
+#include "item.h"
 #include "condition.h"
 #include "combat.h"
 
@@ -33,6 +35,8 @@
 #include "configmanager.h"
 #include "game.h"
 
+#include "tools.h"
+
 boost::recursive_mutex AutoId::lock;
 uint32_t AutoId::count = 1000;
 AutoId::List AutoId::list;
@@ -40,6 +44,36 @@ AutoId::List AutoId::list;
 extern Game g_game;
 extern ConfigManager g_config;
 extern CreatureEvents* g_creatureEvents;
+
+namespace
+{
+	inline Vec2f normalize(const Vec2f& value)
+	{
+		float lengthSq = value.x * value.x + value.y * value.y;
+		if(lengthSq <= 1e-6f)
+			return Vec2f();
+
+		float invLength = 1.f / std::sqrt(lengthSq);
+		return Vec2f(value.x * invLength, value.y * invLength);
+	}
+
+	inline float computeTileSpeed(const Creature& creature)
+	{
+		const Tile* tile = creature.getTile();
+		uint32_t tileSpeed = 150;
+		if(tile && tile->ground)
+			tileSpeed = Item::items[tile->ground->getID()].speed;
+
+		if(!tileSpeed)
+			tileSpeed = 150;
+
+		int32_t creatureSpeed = creature.getSpeed();
+		if(creatureSpeed <= 0)
+			creatureSpeed = 1;
+
+		return static_cast<float>(creatureSpeed) / static_cast<float>(tileSpeed);
+	}
+}
 
 Creature::Creature()
 {
@@ -79,6 +113,9 @@ Creature::Creature()
 	checked = false;
 	memset(localMapCache, false, sizeof(localMapCache));
 
+	posf = Vec2f();
+	velocity = Vec2f();
+
 	attackedCreature = NULL;
 	lastHitCreature = 0;
 	lastDamageSource = COMBAT_NONE;
@@ -105,6 +142,150 @@ Creature::~Creature()
 	conditions.clear();
 	eventsList.clear();
 }
+
+
+void Creature::setVelocity(const Vec2f& value)
+{
+	bool wasMoving = (!velocity.isZero() || !arpgWaypoints.empty());
+	velocity = value;
+
+	if(!g_config.getBool(ConfigManager::ARPG_MODE))
+		return;
+
+	bool isMoving = (!velocity.isZero() || !arpgWaypoints.empty());
+	if(isMoving && !wasMoving)
+		g_game.trackArpgMovingCreature(this);
+	else if(!isMoving && wasMoving)
+		g_game.untrackArpgMovingCreature(this);
+}
+
+void Creature::clearArpgMotion()
+{
+	bool wasMoving = (!velocity.isZero() || !arpgWaypoints.empty());
+	velocity = Vec2f();
+	arpgWaypoints.clear();
+
+	if(wasMoving && g_config.getBool(ConfigManager::ARPG_MODE))
+		g_game.untrackArpgMovingCreature(this);
+}
+
+bool Creature::hasArpgMotion() const
+{
+	return !velocity.isZero() || !arpgWaypoints.empty();
+}
+
+void Creature::updateArpgMotion(double dtSeconds)
+{
+	if(!g_config.getBool(ConfigManager::ARPG_MODE))
+		return;
+
+	if(cancelNextWalk)
+	{
+		cancelNextWalk = false;
+		clearArpgMotion();
+		return;
+	}
+
+	if(dtSeconds <= 0.0 || !hasArpgMotion())
+		return;
+
+	if(velocity.isZero() && !arpgWaypoints.empty())
+	{
+		Vec2f nextDelta = arpgWaypoints.front() - posf;
+		Vec2f direction = normalize(nextDelta);
+		float speed = computeTileSpeed(*this);
+		setVelocity(direction * speed);
+	}
+
+	if(!velocity.isZero())
+		posf += velocity * static_cast<float>(dtSeconds);
+
+	if(!arpgWaypoints.empty())
+	{
+		Vec2f delta = arpgWaypoints.front() - posf;
+		float distSq = delta.x * delta.x + delta.y * delta.y;
+		if(distSq <= 0.01f)
+		{
+			posf = arpgWaypoints.front();
+			arpgWaypoints.pop_front();
+			if(arpgWaypoints.empty())
+			{
+				setVelocity(Vec2f());
+			}
+			else
+			{
+				Vec2f nextDelta = arpgWaypoints.front() - posf;
+				Vec2f direction = normalize(nextDelta);
+				float speed = computeTileSpeed(*this);
+				setVelocity(direction * speed);
+			}
+		}
+	}
+
+	Position currentPos = getPosition();
+	int32_t roundedX = static_cast<int32_t>(std::floor(posf.x + 0.5f));
+	int32_t roundedY = static_cast<int32_t>(std::floor(posf.y + 0.5f));
+
+	uint32_t guard = 0;
+	while((currentPos.x != roundedX || currentPos.y != roundedY) && guard < 4)
+	{
+		int32_t stepX = 0;
+		if(roundedX > currentPos.x)
+			stepX = 1;
+		else if(roundedX < currentPos.x)
+			stepX = -1;
+
+		int32_t stepY = 0;
+		if(roundedY > currentPos.y)
+			stepY = 1;
+		else if(roundedY < currentPos.y)
+			stepY = -1;
+
+		Direction dir = SOUTH;
+		if(stepX == 0 && stepY < 0)
+			dir = NORTH;
+		else if(stepX == 0 && stepY > 0)
+			dir = SOUTH;
+		else if(stepX > 0 && stepY == 0)
+			dir = EAST;
+		else if(stepX < 0 && stepY == 0)
+			dir = WEST;
+		else if(stepX > 0 && stepY > 0)
+			dir = SOUTHEAST;
+		else if(stepX > 0 && stepY < 0)
+			dir = NORTHEAST;
+		else if(stepX < 0 && stepY > 0)
+			dir = SOUTHWEST;
+		else if(stepX < 0 && stepY < 0)
+			dir = NORTHWEST;
+		else
+			break;
+
+		ReturnValue ret = g_game.internalMoveCreature(this, dir);
+		if(ret != RET_NOERROR)
+		{
+			clearArpgMotion();
+			break;
+		}
+
+		Position updatedPos = getPosition();
+		if(updatedPos == currentPos)
+			break;
+
+		currentPos = updatedPos;
+		++guard;
+	}
+
+	if(!hasArpgMotion())
+		return;
+
+	if(velocity.isZero() && !arpgWaypoints.empty())
+	{
+		Vec2f nextDelta = arpgWaypoints.front() - posf;
+		Vec2f direction = normalize(nextDelta);
+		float speed = computeTileSpeed(*this);
+		setVelocity(direction * speed);
+	}
 
 Vec2f Creature::getContinuousPosition() const
 {
@@ -341,6 +522,49 @@ bool Creature::startAutoWalk(std::list<Direction>& listDir)
 		return false;
 	}
 
+	if(g_config.getBool(ConfigManager::ARPG_MODE))
+	{
+		cancelNextWalk = false;
+		listWalkDir.clear();
+		arpgWaypoints.clear();
+
+		Position cursor = getPosition();
+		for(std::list<Direction>::const_iterator it = listDir.begin(); it != listDir.end(); ++it)
+		{
+			cursor = getNextPosition((*it), cursor);
+			arpgWaypoints.push_back(Vec2f(static_cast<float>(cursor.x), static_cast<float>(cursor.y)));
+		}
+
+		while(!arpgWaypoints.empty())
+		{
+			Vec2f delta = arpgWaypoints.front() - posf;
+			if(delta.isZero())
+			{
+				posf = arpgWaypoints.front();
+				arpgWaypoints.pop_front();
+				continue;
+			}
+
+			float speed = computeTileSpeed(*this);
+			if(speed <= 0.f)
+			{
+				clearArpgMotion();
+				return false;
+			}
+
+			setVelocity(normalize(delta) * speed);
+			break;
+		}
+
+		if(arpgWaypoints.empty())
+		{
+			clearArpgMotion();
+			return true;
+		}
+
+		return true;
+	}
+
 	listWalkDir = listDir;
 	addEventWalk(listDir.size() == 1);
 	return true;
@@ -349,6 +573,9 @@ bool Creature::startAutoWalk(std::list<Direction>& listDir)
 void Creature::addEventWalk(bool firstStep/* = false*/)
 {
 	cancelNextWalk = false;
+	if(g_config.getBool(ConfigManager::ARPG_MODE))
+		return;
+
 	if(getStepSpeed() < 1 || eventWalk)
 		return;
 
@@ -507,6 +734,7 @@ void Creature::onCreatureAppear(const Creature* creature)
 {
 	if(creature == this)
 	{
+		posf = Vec2f(getPosition().x, getPosition().y);
 		if(useCacheMap())
 		{
 			isMapLoaded = true;
@@ -524,6 +752,7 @@ void Creature::onCreatureDisappear(const Creature* creature, bool)
 
 void Creature::onRemovedCreature()
 {
+	clearArpgMotion();
 	setRemoved();
 	removeList();
 	if(master && !master->isRemoved())
@@ -557,7 +786,15 @@ void Creature::onCreatureMove(const Creature* creature, const Tile* newTile, con
 				lastStepCost = 3;
 		}
 		else
+		{
+			if(g_config.getBool(ConfigManager::ARPG_MODE))
+			{
+				posf = Vec2f(newPos.x, newPos.y);
+				clearArpgMotion();
+			}
+
 			stopEventWalk();
+		}
 
 		if(!summons.empty() && (!g_config.getBool(ConfigManager::TELEPORT_SUMMONS) ||
 			(g_config.getBool(ConfigManager::TELEPORT_PLAYER_SUMMONS) && !getPlayer())))
