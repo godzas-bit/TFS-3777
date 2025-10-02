@@ -311,8 +311,17 @@ class Combat
 			double _maxb, double _minl, double _maxl, double _minm, double _maxm, int32_t _minc,
 			int32_t _maxc);
 
-		void postCombatEffects(Creature* caster, const Position& pos) const
-			{Combat::postCombatEffects(caster, pos, params);}
+                void postCombatEffects(Creature* caster, const Position& pos) const
+                        {Combat::postCombatEffects(caster, pos, params);}
+
+                /**
+                  * Helper used by the ARPG combat mode to reuse the existing damage
+                  * formulas without executing the classic immediate combat flow.
+                  */
+                bool calculateDamageRange(Creature* creature, Creature* target, int32_t& min, int32_t& max) const
+                        {return getMinMaxValues(creature, target, min, max);}
+
+                const CombatParams& getCombatParams() const {return params;}
 
 	protected:
 		static void doCombatDefault(Creature* caster, Creature* target, const CombatParams& params);
