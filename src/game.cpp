@@ -18,6 +18,11 @@
 #include <vector>
 #include "game.h"
 
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <unordered_map>
+
 #include "configmanager.h"
 #ifdef __LOGIN_SERVER__
 #include "gameservers.h"
@@ -73,12 +78,18 @@ extern GlobalEvents* g_globalEvents;
 
 Game::Game()
 {
+
 	gameState = GAMESTATE_NORMAL;
 	worldType = WORLDTYPE_OPEN;
 	map = NULL;
+	debugOverlayHitboxes = false;
+	debugOverlayEffectCount = false;
+	debugOverlayVelocityArrows = false;
+	arpgModeEnabled = false;
 	playersRecord = lastStageLevel = 0;
 	for(int32_t i = 0; i < 3; i++)
 		globalSaveMessage[i] = false;
+  effectTickCounter = 0;
 
 	//(1440 minutes/day) * 10 seconds event interval / (3600 seconds/day)
 	lightHourDelta = 1440 * 10 / 3600;
@@ -102,6 +113,82 @@ Game::~Game()
 	arpgMovingCreatures.clear();
 	if(map)
 	        delete map;
+}
+
+bool Game::isDebugOverlayEnabled(DebugOverlay_t overlay) const
+{
+	switch(overlay)
+	{
+		case DEBUG_OVERLAY_HITBOXES:
+			return debugOverlayHitboxes;
+		case DEBUG_OVERLAY_EFFECT_COUNT:
+			return debugOverlayEffectCount;
+		case DEBUG_OVERLAY_VELOCITY_ARROWS:
+			return debugOverlayVelocityArrows;
+		default:
+			break;
+	}
+
+	return false;
+}
+
+bool Game::setDebugOverlayEnabled(DebugOverlay_t overlay, bool enabled)
+{
+	bool current = isDebugOverlayEnabled(overlay);
+	const char* overlayName = "unknown";
+	bool* target = NULL;
+
+	switch(overlay)
+	{
+		case DEBUG_OVERLAY_HITBOXES:
+			target = &debugOverlayHitboxes;
+			overlayName = "hitboxes";
+			break;
+
+		case DEBUG_OVERLAY_EFFECT_COUNT:
+			target = &debugOverlayEffectCount;
+			overlayName = "effect count";
+			break;
+
+		case DEBUG_OVERLAY_VELOCITY_ARROWS:
+			target = &debugOverlayVelocityArrows;
+			overlayName = "velocity arrows";
+			break;
+
+		default:
+			return current;
+	}
+
+	if(target && *target != enabled)
+	{
+		*target = enabled;
+		std::clog << "[Game::setDebugOverlayEnabled] " << overlayName << " overlay "
+			<< (enabled ? "enabled" : "disabled") << std::endl;
+	}
+
+	return target ? *target : current;
+}
+
+bool Game::toggleDebugOverlay(DebugOverlay_t overlay)
+{
+	return setDebugOverlayEnabled(overlay, !isDebugOverlayEnabled(overlay));
+}
+
+bool Game::setArpgModeEnabled(bool enabled)
+{
+	if(arpgModeEnabled != enabled)
+	{
+		arpgModeEnabled = enabled;
+		std::clog << "[Game::setArpgModeEnabled] ARPG mode "
+			<< (enabled ? "enabled" : "disabled") << std::endl;
+	}
+
+	return arpgModeEnabled;
+}
+
+bool Game::toggleArpgMode()
+{
+	return setArpgModeEnabled(!arpgModeEnabled);
 }
 
 void Game::start(ServiceManager* servicer)
@@ -185,10 +272,347 @@ void Game::start(ServiceManager* servicer)
 
 void Game::loadGameState()
 {
-	ScriptEnviroment::loadGameState();
-	loadMotd();
-	loadPlayersRecord();
-	checkHighscores();
+        ScriptEnviroment::loadGameState();
+        loadMotd();
+        loadPlayersRecord();
+        checkHighscores();
+}
+
+bool Game::isArpgModeEnabled() const
+{
+        return g_config.getBool(ConfigManager::ARPG_MODE);
+}
+
+Vec2f Game::toContinuousPosition(const Position& pos) const
+{
+        return Vec2f(static_cast<float>(pos.x) + 0.5f, static_cast<float>(pos.y) + 0.5f);
+}
+
+Vec2f Game::directionToVector(Direction dir) const
+{
+        switch(dir)
+        {
+                case NORTH:
+                        return Vec2f(0.f, -1.f);
+                case SOUTH:
+                        return Vec2f(0.f, 1.f);
+                case WEST:
+                        return Vec2f(-1.f, 0.f);
+                case EAST:
+                        return Vec2f(1.f, 0.f);
+                case NORTHWEST:
+                        return Vec2f(-0.7071067f, -0.7071067f);
+                case NORTHEAST:
+                        return Vec2f(0.7071067f, -0.7071067f);
+                case SOUTHWEST:
+                        return Vec2f(-0.7071067f, 0.7071067f);
+                case SOUTHEAST:
+                        return Vec2f(0.7071067f, 0.7071067f);
+                default:
+                        break;
+        }
+
+        return Vec2f();
+}
+
+void Game::spawnEffect(Effect effect)
+{
+        if(!isArpgModeEnabled())
+                return;
+
+        if(!effect.startTick)
+                effect.startTick = effectTickCounter + 1;
+
+        if(effect.endTick <= effect.startTick)
+                effect.endTick = effect.startTick + 1;
+
+        activeEffects.push_back(effect);
+}
+
+bool Game::queueSpellProjectileEffect(const Combat& combat, Creature* caster, Creature* target,
+        const Position& targetPos, uint16_t spellId)
+{
+        if(!isArpgModeEnabled() || !caster)
+                return false;
+
+        int32_t minChange = 0, maxChange = 0;
+        if(!combat.calculateDamageRange(caster, target, minChange, maxChange))
+                return false;
+
+        if(maxChange >= 0)
+                return false;
+
+        Effect effect;
+        effect.kind = Effect::Projectile;
+        effect.source = caster->getID();
+        effect.spellId = spellId;
+        effect.params = combat.getCombatParams();
+        effect.minChange = minChange;
+        effect.maxChange = maxChange;
+        effect.hitbox = AABB::fromCenterAndHalfExtents(Vec2f(), Vec2f(0.3f, 0.3f));
+        effect.pos = caster->getContinuousPosition();
+
+        const Vec2f destination = toContinuousPosition(targetPos);
+        const Vec2f delta = destination - effect.pos;
+        const float distance = delta.length();
+        const float projectileSpeed = 0.6f;
+        effect.vel = distance > 0.f ? delta.normalized() * projectileSpeed : Vec2f();
+
+        const uint32_t travelTicks = distance > 0.f ? static_cast<uint32_t>(std::ceil(distance / projectileSpeed)) + 1 : 1;
+        effect.startTick = effectTickCounter + 1;
+        effect.endTick = effect.startTick + std::max<uint32_t>(1, travelTicks);
+
+        /*
+         * Capture the combat parameters by value so the lambda that applies damage later
+         * can operate without touching the mutable Effect instance stored in the list.
+         */
+        const CombatParams paramsForProjectile = effect.params;
+        const int32_t minProjectile = effect.minChange;
+        const int32_t maxProjectile = effect.maxChange;
+        effect.onHit = [paramsForProjectile, minProjectile, maxProjectile](Creature* src, Creature* tgt)
+        {
+                Combat::doCombatHealth(src, tgt, minProjectile, maxProjectile, paramsForProjectile);
+        };
+
+        if(effect.params.effects.distance != SHOOT_EFFECT_NONE)
+                Combat::addDistanceEffect(caster, caster->getPosition(), targetPos, effect.params.effects.distance);
+
+        spawnEffect(effect);
+        return true;
+}
+
+bool Game::queueSpellAoEEffect(const Combat& combat, Creature* caster, const Position& targetPos, uint16_t spellId)
+{
+        if(!isArpgModeEnabled() || !caster)
+                return false;
+
+        int32_t minChange = 0, maxChange = 0;
+        if(!combat.calculateDamageRange(caster, NULL, minChange, maxChange))
+                return false;
+
+        if(maxChange >= 0)
+                return false;
+
+        Effect effect;
+        effect.kind = Effect::AoE;
+        effect.source = caster->getID();
+        effect.spellId = spellId;
+        effect.params = combat.getCombatParams();
+        effect.minChange = minChange;
+        effect.maxChange = maxChange;
+        effect.hitbox = AABB::fromCenterAndHalfExtents(Vec2f(), Vec2f(1.0f, 1.0f));
+        effect.pos = toContinuousPosition(targetPos);
+        effect.vel = Vec2f();
+        effect.startTick = effectTickCounter + 1;
+        effect.endTick = effect.startTick + 1;
+
+        const CombatParams paramsForArea = effect.params;
+        const int32_t minAoE = effect.minChange;
+        const int32_t maxAoE = effect.maxChange;
+        effect.onHit = [paramsForArea, minAoE, maxAoE](Creature* src, Creature* tgt)
+        {
+                Combat::doCombatHealth(src, tgt, minAoE, maxAoE, paramsForArea);
+        };
+
+        spawnEffect(effect);
+        return true;
+}
+
+bool Game::queueWeaponProjectileEffect(Creature* caster, Creature* target, int32_t minChange,
+        const CombatParams& params, const std::function<void(Creature*, Creature*)>& postHit)
+{
+        if(!isArpgModeEnabled() || !caster || !target || minChange >= 0)
+                return false;
+
+        Effect effect;
+        effect.kind = Effect::Projectile;
+        effect.source = caster->getID();
+        effect.params = params;
+        effect.minChange = minChange;
+        effect.maxChange = minChange;
+        effect.hitbox = AABB::fromCenterAndHalfExtents(Vec2f(), Vec2f(0.3f, 0.3f));
+        effect.pos = caster->getContinuousPosition();
+
+        const Vec2f destination = target->getContinuousPosition();
+        const Vec2f delta = destination - effect.pos;
+        const float distance = delta.length();
+        const float projectileSpeed = 0.6f;
+        effect.vel = distance > 0.f ? delta.normalized() * projectileSpeed : Vec2f();
+
+        const uint32_t travelTicks = distance > 0.f ? static_cast<uint32_t>(std::ceil(distance / projectileSpeed)) + 1 : 1;
+        effect.startTick = effectTickCounter + 1;
+        effect.endTick = effect.startTick + std::max<uint32_t>(1, travelTicks);
+
+        const CombatParams paramsForWeapon = effect.params;
+        const int32_t minWeapon = effect.minChange;
+        const int32_t maxWeapon = effect.maxChange;
+        effect.onHit = [paramsForWeapon, minWeapon, maxWeapon, postHit](Creature* src, Creature* tgt)
+        {
+                Combat::doCombatHealth(src, tgt, minWeapon, maxWeapon, paramsForWeapon);
+                if(postHit)
+                        postHit(src, tgt);
+        };
+
+        spawnEffect(effect);
+        return true;
+}
+
+bool Game::queueWeaponMeleeEffect(Creature* caster, Creature* target, int32_t minChange, const CombatParams& params,
+        const std::function<void(Creature*, Creature*)>& postHit)
+{
+        if(!isArpgModeEnabled() || !caster || minChange >= 0)
+                return false;
+
+        Effect effect;
+        effect.kind = Effect::MeleeArc;
+        effect.source = caster->getID();
+        effect.params = params;
+        effect.minChange = minChange;
+        effect.maxChange = minChange;
+        effect.hitbox = AABB::fromCenterAndHalfExtents(Vec2f(), Vec2f(0.7f, 0.45f));
+
+        Vec2f forward = directionToVector(caster->getDirection());
+        if(target)
+        {
+                Vec2f toTarget = target->getContinuousPosition() - caster->getContinuousPosition();
+                if(toTarget.length() > std::numeric_limits<float>::epsilon())
+                        forward = toTarget.normalized();
+        }
+
+        if(forward.length() <= std::numeric_limits<float>::epsilon())
+                forward = Vec2f(0.f, -1.f);
+
+        effect.pos = caster->getContinuousPosition() + forward * 0.75f;
+        effect.vel = Vec2f();
+        effect.startTick = effectTickCounter + 1;
+        effect.endTick = effect.startTick + 1;
+
+        const CombatParams paramsForMelee = effect.params;
+        const int32_t minMelee = effect.minChange;
+        effect.onHit = [paramsForMelee, minMelee, postHit](Creature* src, Creature* tgt)
+        {
+                Combat::doCombatHealth(src, tgt, minMelee, minMelee, paramsForMelee);
+                if(postHit)
+                        postHit(src, tgt);
+        };
+
+        spawnEffect(effect);
+        return true;
+}
+
+void Game::updateEffects()
+{
+        if(!isArpgModeEnabled() || activeEffects.empty())
+                return;
+
+        ++effectTickCounter;
+
+        /*
+         * Build a very small broadphase structure by binning creatures into unit sized
+         * buckets. The server typically hosts a modest number of actors so an
+         * unordered_map keeps the implementation simple while still preventing the
+         * quadratic checks that a naive implementation would perform.
+         */
+        std::unordered_map<int64_t, std::vector<Creature*> > buckets;
+        buckets.reserve(autoList.size());
+
+        for(AutoList<Creature>::iterator it = autoList.begin(); it != autoList.end(); ++it)
+        {
+                Creature* creature = it->second;
+                if(!creature || creature->isRemoved())
+                        continue;
+
+                const AABB creatureBox = creature->getCombatAABB();
+                const int32_t minCellX = static_cast<int32_t>(std::floor(creatureBox.min.x));
+                const int32_t maxCellX = static_cast<int32_t>(std::floor(creatureBox.max.x));
+                const int32_t minCellY = static_cast<int32_t>(std::floor(creatureBox.min.y));
+                const int32_t maxCellY = static_cast<int32_t>(std::floor(creatureBox.max.y));
+
+                for(int32_t gx = minCellX; gx <= maxCellX; ++gx)
+                {
+                        for(int32_t gy = minCellY; gy <= maxCellY; ++gy)
+                        {
+                                const int64_t key = (static_cast<int64_t>(gx) << 32) ^ static_cast<uint32_t>(gy);
+                                buckets[key].push_back(creature);
+                        }
+                }
+        }
+
+        for(std::vector<Effect>::iterator it = activeEffects.begin(); it != activeEffects.end(); ++it)
+        {
+                Effect& effect = *it;
+                if(effect.resolved)
+                        continue;
+
+                if(effect.startTick > effectTickCounter)
+                        continue;
+
+                if(effect.endTick && effectTickCounter > effect.endTick)
+                {
+                        effect.resolved = true;
+                        continue;
+                }
+
+                Creature* source = getCreatureByID(effect.source);
+                if(!source)
+                {
+                        effect.resolved = true;
+                        continue;
+                }
+
+                effect.pos += effect.vel;
+                const AABB worldBox = effect.hitbox.translated(effect.pos);
+
+                const int32_t minCellX = static_cast<int32_t>(std::floor(worldBox.min.x));
+                const int32_t maxCellX = static_cast<int32_t>(std::floor(worldBox.max.x));
+                const int32_t minCellY = static_cast<int32_t>(std::floor(worldBox.min.y));
+                const int32_t maxCellY = static_cast<int32_t>(std::floor(worldBox.max.y));
+
+                bool resolvedThisTick = false;
+                for(int32_t gx = minCellX; gx <= maxCellX && !resolvedThisTick; ++gx)
+                {
+                        for(int32_t gy = minCellY; gy <= maxCellY && !resolvedThisTick; ++gy)
+                        {
+                                const int64_t key = (static_cast<int64_t>(gx) << 32) ^ static_cast<uint32_t>(gy);
+                                std::unordered_map<int64_t, std::vector<Creature*> >::const_iterator bucketIt = buckets.find(key);
+                                if(bucketIt == buckets.end())
+                                        continue;
+
+                                for(std::vector<Creature*>::const_iterator cIt = bucketIt->second.begin(); cIt != bucketIt->second.end(); ++cIt)
+                                {
+                                        Creature* candidate = *cIt;
+                                        if(!candidate || candidate->isRemoved())
+                                                continue;
+
+                                        if(candidate->getID() == effect.source)
+                                                continue;
+
+                                        if(effect.impactedCreatures.count(candidate->getID()))
+                                                continue;
+
+                                        if(!worldBox.intersects(candidate->getCombatAABB()))
+                                                continue;
+
+                                        if(effect.onHit)
+                                                effect.onHit(source, candidate);
+
+                                        effect.impactedCreatures.insert(candidate->getID());
+                                        effect.resolved = true;
+                                        resolvedThisTick = true;
+                                        break;
+                                }
+                        }
+                }
+
+                if(!resolvedThisTick && effect.endTick && effectTickCounter >= effect.endTick)
+                        effect.resolved = true;
+        }
+
+        activeEffects.erase(std::remove_if(activeEffects.begin(), activeEffects.end(),
+                [](const Effect& effect)
+                {
+                        return effect.resolved;
+                }), activeEffects.end());
 }
 
 void Game::setGameState(GameState_t newState)
@@ -4209,7 +4633,8 @@ void Game::checkCreatureWalk(uint32_t creatureId)
 		return;
 
 	creature->onWalk();
-	cleanup();
+        updateEffects();
+        cleanup();
 }
 
 void Game::updateCreatureWalk(uint32_t creatureId)

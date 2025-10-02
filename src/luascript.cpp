@@ -6291,54 +6291,90 @@ int32_t LuaInterface::luaDoCombat(lua_State* L)
 
 	switch(var.type)
 	{
-		case VARIANT_NUMBER:
-		{
-			Creature* target = g_game.getCreatureByID(var.number);
-			if(!target || !creature || !creature->canSeeCreature(target))
-			{
-				lua_pushboolean(L, false);
-				return 1;
-			}
+                case VARIANT_NUMBER:
+                {
+                        Creature* target = g_game.getCreatureByID(var.number);
+                        if(!target || !creature || !creature->canSeeCreature(target))
+                        {
+                                lua_pushboolean(L, false);
+                                return 1;
+                        }
 
-			if(combat->hasArea())
-				combat->doCombat(creature, target->getPosition());
-			else
-				combat->doCombat(creature, target);
+                        if(g_game.isArpgModeEnabled() && combat->getCombatParams().isAggressive)
+                        {
+                                if(g_game.queueSpellProjectileEffect(*combat, creature, target, target->getPosition(), 0))
+                                {
+                                        lua_pushboolean(L, true);
+                                        return 1;
+                                }
+                        }
+
+                        if(combat->hasArea())
+                                combat->doCombat(creature, target->getPosition());
+                        else
+                                combat->doCombat(creature, target);
 
 			break;
 		}
 
-		case VARIANT_POSITION:
-		{
-			combat->doCombat(creature, var.pos);
-			break;
-		}
+                case VARIANT_POSITION:
+                {
+                        if(g_game.isArpgModeEnabled() && combat->getCombatParams().isAggressive)
+                        {
+                                if(g_game.queueSpellAoEEffect(*combat, creature, var.pos, 0))
+                                {
+                                        lua_pushboolean(L, true);
+                                        return 1;
+                                }
+                        }
 
-		case VARIANT_TARGETPOSITION:
-		{
-			if(!combat->hasArea())
-			{
-				combat->postCombatEffects(creature, var.pos);
-				g_game.addMagicEffect(var.pos, MAGIC_EFFECT_POFF);
-			}
+                        combat->doCombat(creature, var.pos);
+                        break;
+                }
+
+                case VARIANT_TARGETPOSITION:
+                {
+                        if(g_game.isArpgModeEnabled() && combat->getCombatParams().isAggressive)
+                        {
+                                if(g_game.queueSpellAoEEffect(*combat, creature, var.pos, 0))
+                                {
+                                        lua_pushboolean(L, true);
+                                        return 1;
+                                }
+                        }
+
+                        if(!combat->hasArea())
+                        {
+                                combat->postCombatEffects(creature, var.pos);
+                                g_game.addMagicEffect(var.pos, MAGIC_EFFECT_POFF);
+                        }
 			else
 				combat->doCombat(creature, var.pos);
 
 			break;
 		}
 
-		case VARIANT_STRING:
-		{
-			Player* target = g_game.getPlayerByName(var.text);
-			if(!target || !creature || !creature->canSeeCreature(target))
-			{
-				lua_pushboolean(L, false);
-				return 1;
-			}
+                case VARIANT_STRING:
+                {
+                        Player* target = g_game.getPlayerByName(var.text);
+                        if(!target || !creature || !creature->canSeeCreature(target))
+                        {
+                                lua_pushboolean(L, false);
+                                return 1;
+                        }
 
-			combat->doCombat(creature, target);
-			break;
-		}
+                        if(g_game.isArpgModeEnabled() && combat->getCombatParams().isAggressive)
+                        {
+                                if(g_game.queueSpellProjectileEffect(*combat, creature, target, target->getPosition(), 0))
+                                {
+                                        lua_pushboolean(L, true);
+                                        return 1;
+                                }
+                        }
+
+                        combat->doCombat(creature, target);
+                        break;
+                }
 
 		default:
 		{

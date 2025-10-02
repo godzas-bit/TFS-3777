@@ -28,6 +28,7 @@
 #include "map.h"
 #include "condition.h"
 #include "creatureevent.h"
+#include "spatial.h"
 
 #include <deque>
 enum slots_t
@@ -180,9 +181,9 @@ class Creature : public AutoId, virtual public Thing
 
 		virtual const std::string& getName() const = 0;
 		virtual const std::string& getNameDescription() const = 0;
-		virtual std::string getDescription(int32_t lookDistance) const;
+                virtual std::string getDescription(int32_t lookDistance) const;
 
-		uint32_t getID() const {return id;}
+                uint32_t getID() const {return id;}
 		void setID()
 		{
 			/*
@@ -195,7 +196,23 @@ class Creature : public AutoId, virtual public Thing
 		}
 
 		void setRemoved() {removed = true;}
-		virtual bool isRemoved() const {return removed;}
+                virtual bool isRemoved() const {return removed;}
+
+                /**
+                  * Continuous world-space position helper used by the ARPG combat simulation.
+                  * The classic code base works with discrete tiles, while the effect system
+                  * operates on floating point coordinates. The center of the tile is used so
+                  * that projectiles originate from the middle of the creature.
+                  */
+                Vec2f getContinuousPosition() const;
+
+                /**
+                  * Axis aligned bounding box describing the creature's combat hitbox in
+                  * continuous space. The half extents are slightly smaller than a tile to
+                  * avoid instantly colliding with the source effect when it is spawned on
+                  * the same square.
+                  */
+                AABB getCombatAABB() const;
 
 		virtual uint32_t rangeId() = 0;
 		virtual void removeList() = 0;

@@ -21,6 +21,7 @@
 #include "player.h"
 #include "npc.h"
 #include "monster.h"
+#include "spatial.h"
 
 #include "item.h"
 #include "condition.h"
@@ -141,6 +142,7 @@ Creature::~Creature()
 	conditions.clear();
 	eventsList.clear();
 }
+
 
 void Creature::setVelocity(const Vec2f& value)
 {
@@ -284,6 +286,24 @@ void Creature::updateArpgMotion(double dtSeconds)
 		float speed = computeTileSpeed(*this);
 		setVelocity(direction * speed);
 	}
+
+Vec2f Creature::getContinuousPosition() const
+{
+        const Position& tilePos = getPosition();
+        return Vec2f(static_cast<float>(tilePos.x) + 0.5f, static_cast<float>(tilePos.y) + 0.5f);
+}
+
+AABB Creature::getCombatAABB() const
+{
+        /*
+         * The ARPG combat subsystem uses continuous 2D space whereas the classic game
+         * logic is tile based. We approximate the creature by a box that is slightly
+         * smaller than a whole tile to keep melee arcs from immediately colliding with
+         * the owner when spawned.
+         */
+        const Vec2f center = getContinuousPosition();
+        const Vec2f halfExtents(0.45f, 0.45f);
+        return AABB::fromCenterAndHalfExtents(center, halfExtents);
 }
 
 bool Creature::canSee(const Position& myPos, const Position& pos, uint32_t viewRangeX, uint32_t viewRangeY)
