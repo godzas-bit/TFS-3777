@@ -77,14 +77,18 @@ extern GlobalEvents* g_globalEvents;
 
 Game::Game()
 {
-        gameState = GAMESTATE_NORMAL;
-        worldType = WORLDTYPE_OPEN;
-        map = NULL;
-        playersRecord = lastStageLevel = 0;
-        for(int32_t i = 0; i < 3; i++)
-                globalSaveMessage[i] = false;
 
-        effectTickCounter = 0;
+	gameState = GAMESTATE_NORMAL;
+	worldType = WORLDTYPE_OPEN;
+	map = NULL;
+	debugOverlayHitboxes = false;
+	debugOverlayEffectCount = false;
+	debugOverlayVelocityArrows = false;
+	arpgModeEnabled = false;
+	playersRecord = lastStageLevel = 0;
+	for(int32_t i = 0; i < 3; i++)
+		globalSaveMessage[i] = false;
+  effectTickCounter = 0;
 
 	//(1440 minutes/day) * 10 seconds event interval / (3600 seconds/day)
 	lightHourDelta = 1440 * 10 / 3600;
@@ -99,6 +103,82 @@ Game::~Game()
 {
 	if(map)
 		delete map;
+}
+
+bool Game::isDebugOverlayEnabled(DebugOverlay_t overlay) const
+{
+	switch(overlay)
+	{
+		case DEBUG_OVERLAY_HITBOXES:
+			return debugOverlayHitboxes;
+		case DEBUG_OVERLAY_EFFECT_COUNT:
+			return debugOverlayEffectCount;
+		case DEBUG_OVERLAY_VELOCITY_ARROWS:
+			return debugOverlayVelocityArrows;
+		default:
+			break;
+	}
+
+	return false;
+}
+
+bool Game::setDebugOverlayEnabled(DebugOverlay_t overlay, bool enabled)
+{
+	bool current = isDebugOverlayEnabled(overlay);
+	const char* overlayName = "unknown";
+	bool* target = NULL;
+
+	switch(overlay)
+	{
+		case DEBUG_OVERLAY_HITBOXES:
+			target = &debugOverlayHitboxes;
+			overlayName = "hitboxes";
+			break;
+
+		case DEBUG_OVERLAY_EFFECT_COUNT:
+			target = &debugOverlayEffectCount;
+			overlayName = "effect count";
+			break;
+
+		case DEBUG_OVERLAY_VELOCITY_ARROWS:
+			target = &debugOverlayVelocityArrows;
+			overlayName = "velocity arrows";
+			break;
+
+		default:
+			return current;
+	}
+
+	if(target && *target != enabled)
+	{
+		*target = enabled;
+		std::clog << "[Game::setDebugOverlayEnabled] " << overlayName << " overlay "
+			<< (enabled ? "enabled" : "disabled") << std::endl;
+	}
+
+	return target ? *target : current;
+}
+
+bool Game::toggleDebugOverlay(DebugOverlay_t overlay)
+{
+	return setDebugOverlayEnabled(overlay, !isDebugOverlayEnabled(overlay));
+}
+
+bool Game::setArpgModeEnabled(bool enabled)
+{
+	if(arpgModeEnabled != enabled)
+	{
+		arpgModeEnabled = enabled;
+		std::clog << "[Game::setArpgModeEnabled] ARPG mode "
+			<< (enabled ? "enabled" : "disabled") << std::endl;
+	}
+
+	return arpgModeEnabled;
+}
+
+bool Game::toggleArpgMode()
+{
+	return setArpgModeEnabled(!arpgModeEnabled);
 }
 
 void Game::start(ServiceManager* servicer)

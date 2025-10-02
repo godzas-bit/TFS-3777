@@ -389,6 +389,8 @@ bool TalkAction::loadFunction(const std::string& functionName)
 		m_function = addSkill;
 	else if(m_functionName == "ghost")
 		m_function = ghost;
+	else if(m_functionName == "arpgdebug")
+		m_function = arpgDebug;
 	else if(m_functionName == "software")
 		m_function = software;
 	else
@@ -1327,6 +1329,26 @@ bool TalkAction::ghost(Creature* creature, const std::string&, const std::string
 		player->sendTextMessage(MSG_INFO_DESCR, "You are now invisible.");
 		player->sendMagicEffect(player->getPosition(), MAGIC_EFFECT_YALAHARIGHOST);
 	}
+
+	return true;
+
+bool TalkAction::arpgDebug(Creature* creature, const std::string&, const std::string&)
+{
+	Player* player = creature->getPlayer();
+	if(!player)
+		return false;
+
+	bool hitboxes = g_game.toggleDebugOverlay(DEBUG_OVERLAY_HITBOXES);
+	bool effectCount = g_game.toggleDebugOverlay(DEBUG_OVERLAY_EFFECT_COUNT);
+	bool velocity = g_game.toggleDebugOverlay(DEBUG_OVERLAY_VELOCITY_ARROWS);
+	bool arpgMode = g_game.toggleArpgMode();
+
+	std::ostringstream ss;
+	ss << "ARPG debug overlays: hitboxes=" << (hitboxes ? "ON" : "OFF")
+		<< ", effect count=" << (effectCount ? "ON" : "OFF")
+		<< ", velocity arrows=" << (velocity ? "ON" : "OFF")
+		<< ". ARPG mode is " << (arpgMode ? "ENABLED" : "DISABLED") << '.';
+	player->sendTextMessage(MSG_INFO_DESCR, ss.str());
 
 	return true;
 }
